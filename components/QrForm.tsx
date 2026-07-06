@@ -56,24 +56,26 @@ export default function QrForm({ onSuccess }: QrFormProps) {
     if (label) formData.append("label", label);
     if (logoFile) formData.append("logo", logoFile);
 
-    const res = await fetch("/api/qr", { method: "POST", body: formData });
-    const data = await res.json();
+    try {
+      const res = await fetch("/api/qr", { method: "POST", body: formData });
+      const data = await res.json();
 
-    setLoading(false);
+      setLoading(false);
 
-    if (!res.ok) {
-      setError(data.error || "Failed to generate QR");
-      return;
+      if (!res.ok) {
+        setError(data.error || "Failed to generate QR");
+        return;
+      }
+
+      setUrl("");
+      setLabel("");
+      removeLogo();
+      onSuccess();
+    } catch (err) {
+      setLoading(false);
+      setError(err instanceof Error ? err.message : "Network error");
     }
-
-    setUrl("");
-    setLabel("");
-    removeLogo();
-    onSuccess();
-  } catch (err) {
-    setLoading(false);
-    setError(err instanceof Error ? err.message : "Network error");
-  }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="bg-bg-card border border-border rounded-xl p-6 space-y-5">
