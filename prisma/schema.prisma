@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  qrCodes   QrCode[]
+}
+
+model QrCode {
+  id              String    @id @default(cuid())
+  label           String?
+  destinationUrl  String
+  logoUrl         String?
+  renderedPngUrl  String
+  renderedSvgUrl  String?
+  renderedJpegUrl String?
+  widthPx         Int?
+  heightPx        Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}

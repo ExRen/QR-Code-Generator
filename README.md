@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QR Code Generator
 
-## Getting Started
+A static QR code generator built with Next.js. Generate QR codes from URLs, add custom logos, and download in multiple formats (PNG, SVG, JPEG).
 
-First, run the development server:
+## Features
+
+- Generate static QR codes from any URL
+- Upload and overlay custom logos on QR codes
+- Download in PNG, SVG, and JPEG formats
+- History with search, filter, and pagination
+- Dark/Light mode support
+- Single-user authentication
+
+## Tech Stack
+
+- **Framework:** Next.js (App Router)
+- **Database:** PostgreSQL (Neon)
+- **ORM:** Prisma
+- **Auth:** NextAuth v5
+- **Storage:** Vercel Blob
+- **QR Generation:** qrcode + sharp
+- **Styling:** Tailwind CSS
+
+## Setup
+
+### Prerequisites
+
+- Node.js 18+
+- PostgreSQL database (Neon free tier works)
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd qr-code-generator
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your database URL, NextAuth secret, and Vercel Blob token
+
+# Generate Prisma client
+npx prisma generate
+
+# Run database migrations
+npx prisma db push
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NEXTAUTH_SECRET` | Secret for NextAuth JWT (generate with `openssl rand -base64 32`) |
+| `NEXTAUTH_URL` | Your app URL (e.g., `http://localhost:3000`) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob read/write token |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Creating a User
 
-## Learn More
+Since there's no public signup, create a user manually:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npx prisma studio
+# Open the User table and add a record with hashed password
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Or use the seed script (create `prisma/seed.ts` if needed).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+```
+├── app/
+│   ├── api/
+│   │   ├── auth/[...nextauth]/  # NextAuth route
+│   │   ├── qr/                  # QR CRUD endpoints
+│   │   └── upload/              # Logo upload endpoint
+│   ├── dashboard/               # Protected pages
+│   │   ├── generate/            # QR generator form
+│   │   └── page.tsx             # History view
+│   └── login/                   # Login page
+├── components/                  # Reusable UI components
+├── lib/                         # Utility functions
+│   ├── auth.ts                  # NextAuth config
+│   ├── blob.ts                  # Vercel Blob helper
+│   ├── prisma.ts                # Prisma client
+│   └── qr.ts                    # QR generation logic
+└── prisma/
+    └── schema.prisma            # Database schema
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

@@ -1,0 +1,125 @@
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { generateQrPng, generateQrSvg } from "@/lib/qr";
+import { uploadToBlob } from "@/lib/blob";
+import sharp from "sharp";
+import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
+
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const formData = await req.formData();
+  const url = formData.get("url") as string;
+  const label = (formData.get("label") as string) || null;
+  const logo = formData.get("logo") as File | null;
+
+  if (!url) {
+    return NextResponse.json({ error: "URL is required" }, { status: 400 });
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
+  const id = randomUUID();
+
+  // Generate base QR
+  let qrPngBuffer = await generateQrPng(url, 512);
+  let logoUrl: string | null = null;
+
+  // Overlay logo if provided
+  if (logo && logo.size > 0) {
+    const logoBuffer = Buffer.from(await logo.arrayBuffer());
+    logoUrl = await uploadToBlob(`logos/${id}`, logoBuffer, logo.type);
+
+    // Resize logo to ~20% of QR size
+    const logoResized = await sharp(logoBuffer)
+      .resize(102, 102, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      .png()
+      .toBuffer();
+
+    // Composite logo onto QR
+    qrPngBuffer = await sharp(qrPngBuffer)
+      .composite([{ input: logoResized, gravity: "center" }])
+      .png()
+      .toBuffer();
+  }
+
+  // Generate SVG
+  const qrSvg = await generateQrSvg(url);
+
+  // Convert to JPEG
+  const qrJpegBuffer = await sharp(qrPngBuffer).jpeg({ quality: 90 }).toBuffer();
+
+  // Upload to Blob
+  const [pngUrl, svgUrl, jpegUrl] = await Promise.all([
+    uploadToBlob(`qr/${id}.png`, qrPngBuffer, "image/png"),
+    uploadToBlob(`qr/${id}.svg`, qrSvg, "image/svg+xml"),
+    uploadToBlob(`qr/${id}.jpeg`, qrJpegBuffer, "image/jpeg"),
+  ]);
+
+  // Get dimensions
+  const metadata = await sharp(qrPngBuffer).metadata();
+
+  // Save to DB
+  const qrCode = await prisma.qrCode.create({
+    data: {
+      id,
+      label,
+      destinationUrl: url,
+      logoUrl,
+      renderedPngUrl: pngUrl,
+      renderedSvgUrl: svgUrl,
+      renderedJpegUrl: jpegUrl,
+      widthPx: metadata.width || 512,
+      heightPx: metadata.height || 512,
+      userId: session.user.id,
+    },
+  });
+
+  return NextResponse.json(qrCode);
+}
+
+export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const search = searchParams.get("search") || "";
+  const sort = searchParams.get("sort") || "newest";
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = 20;
+
+  const where = {
+    userId: session.user.id,
+    deletedAt: null,
+    ...(search
+      ? {
+          OR: [
+            { label: { contains: search, mode: "insensitive" as const } },
+            { destinationUrl: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [qrCodes, total] = await Promise.all([
+    prisma.qrCode.findMany({
+      where,
+      orderBy: { createdAt: sort === "oldest" ? "asc" : "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.qrCode.count({ where }),
+  ]);
+
+  return NextResponse.json({ qrCodes, total, page, totalPages: Math.ceil(total / limit) });
+}
