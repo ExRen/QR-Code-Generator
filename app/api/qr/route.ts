@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
 
     // Overlay logo if provided
     if (logo && logo.size > 0) {
-      const logoBuffer = Buffer.from(await logo.arrayBuffer());
+      const logoArrayBuffer = await logo.arrayBuffer();
+      const logoBuffer = Buffer.from(new Uint8Array(logoArrayBuffer));
       logoUrl = await uploadToBlob(`logos/${id}`, logoBuffer, logo.type);
 
       // Resize logo to ~20% of QR size
