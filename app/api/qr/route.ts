@@ -7,83 +7,91 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const formData = await req.formData();
-  const url = formData.get("url") as string;
-  const label = (formData.get("label") as string) || null;
-  const logo = formData.get("logo") as File | null;
-
-  if (!url) {
-    return NextResponse.json({ error: "URL is required" }, { status: 400 });
-  }
-
   try {
-    new URL(url);
-  } catch {
-    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const formData = await req.formData();
+    const url = formData.get("url") as string;
+    const label = (formData.get("label") as string) || null;
+    const logo = formData.get("logo") as File | null;
+
+    if (!url) {
+      return NextResponse.json({ error: "URL is required" }, { status: 400 });
+    }
+
+    try {
+      new URL(url);
+    } catch {
+      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+    }
+
+    const id = randomUUID();
+
+    // Generate base QR
+    let qrPngBuffer = await generateQrPng(url, 512);
+    let logoUrl: string | null = null;
+
+    // Overlay logo if provided
+    if (logo && logo.size > 0) {
+      const logoBuffer = Buffer.from(await logo.arrayBuffer());
+      logoUrl = await uploadToBlob(`logos/${id}`, logoBuffer, logo.type);
+
+      // Resize logo to ~20% of QR size
+      const logoResized = await sharp(logoBuffer)
+        .resize(102, 102, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .png()
+        .toBuffer();
+
+      // Composite logo onto QR
+      qrPngBuffer = await sharp(qrPngBuffer)
+        .composite([{ input: logoResized, gravity: "center" }])
+        .png()
+        .toBuffer();
+    }
+
+    // Generate SVG
+    const qrSvg = await generateQrSvg(url);
+
+    // Convert to JPEG
+    const qrJpegBuffer = await sharp(qrPngBuffer).jpeg({ quality: 90 }).toBuffer();
+
+    // Upload to Blob
+    const [pngUrl, svgUrl, jpegUrl] = await Promise.all([
+      uploadToBlob(`qr/${id}.png`, qrPngBuffer, "image/png"),
+      uploadToBlob(`qr/${id}.svg`, qrSvg, "image/svg+xml"),
+      uploadToBlob(`qr/${id}.jpeg`, qrJpegBuffer, "image/jpeg"),
+    ]);
+
+    // Get dimensions
+    const metadata = await sharp(qrPngBuffer).metadata();
+
+    // Save to DB
+    const qrCode = await prisma.qrCode.create({
+      data: {
+        id,
+        label,
+        destinationUrl: url,
+        logoUrl,
+        renderedPngUrl: pngUrl,
+        renderedSvgUrl: svgUrl,
+        renderedJpegUrl: jpegUrl,
+        widthPx: metadata.width || 512,
+        heightPx: metadata.height || 512,
+        userId: session.user.id,
+      },
+    });
+
+    return NextResponse.json(qrCode);
+  } catch (error) {
+    console.error("QR generation error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to generate QR" },
+      { status: 500 }
+    );
   }
-
-  const id = randomUUID();
-
-  // Generate base QR
-  let qrPngBuffer = await generateQrPng(url, 512);
-  let logoUrl: string | null = null;
-
-  // Overlay logo if provided
-  if (logo && logo.size > 0) {
-    const logoBuffer = Buffer.from(await logo.arrayBuffer());
-    logoUrl = await uploadToBlob(`logos/${id}`, logoBuffer, logo.type);
-
-    // Resize logo to ~20% of QR size
-    const logoResized = await sharp(logoBuffer)
-      .resize(102, 102, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
-      .png()
-      .toBuffer();
-
-    // Composite logo onto QR
-    qrPngBuffer = await sharp(qrPngBuffer)
-      .composite([{ input: logoResized, gravity: "center" }])
-      .png()
-      .toBuffer();
-  }
-
-  // Generate SVG
-  const qrSvg = await generateQrSvg(url);
-
-  // Convert to JPEG
-  const qrJpegBuffer = await sharp(qrPngBuffer).jpeg({ quality: 90 }).toBuffer();
-
-  // Upload to Blob
-  const [pngUrl, svgUrl, jpegUrl] = await Promise.all([
-    uploadToBlob(`qr/${id}.png`, qrPngBuffer, "image/png"),
-    uploadToBlob(`qr/${id}.svg`, qrSvg, "image/svg+xml"),
-    uploadToBlob(`qr/${id}.jpeg`, qrJpegBuffer, "image/jpeg"),
-  ]);
-
-  // Get dimensions
-  const metadata = await sharp(qrPngBuffer).metadata();
-
-  // Save to DB
-  const qrCode = await prisma.qrCode.create({
-    data: {
-      id,
-      label,
-      destinationUrl: url,
-      logoUrl,
-      renderedPngUrl: pngUrl,
-      renderedSvgUrl: svgUrl,
-      renderedJpegUrl: jpegUrl,
-      widthPx: metadata.width || 512,
-      heightPx: metadata.height || 512,
-      userId: session.user.id,
-    },
-  });
-
-  return NextResponse.json(qrCode);
 }
 
 export async function GET(req: NextRequest) {

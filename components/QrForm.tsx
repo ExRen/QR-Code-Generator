@@ -70,7 +70,10 @@ export default function QrForm({ onSuccess }: QrFormProps) {
     setLabel("");
     removeLogo();
     onSuccess();
-  };
+  } catch (err) {
+    setLoading(false);
+    setError(err instanceof Error ? err.message : "Network error");
+  }
 
   return (
     <form onSubmit={handleSubmit} className="bg-bg-card border border-border rounded-xl p-6 space-y-5">
