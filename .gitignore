@@ -50,3 +50,5 @@ Thumbs.db
 # Misc
 *.pem
 *.md
+AGENTS.md
+CLAUDE.md
