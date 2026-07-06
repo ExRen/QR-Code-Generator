@@ -2,7 +2,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateQrPng, generateQrSvg } from "@/lib/qr";
 import { uploadToBlob } from "@/lib/blob";
-import sharp from "sharp";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -31,43 +30,24 @@ export async function POST(req: NextRequest) {
     const id = randomUUID();
 
     // Generate base QR
-    let qrPngBuffer = await generateQrPng(url, 512);
+    const qrPngBuffer = await generateQrPng(url, 512);
     let logoUrl: string | null = null;
 
-    // Overlay logo if provided
+    // Upload logo if provided (logo overlay will be done client-side)
     if (logo && logo.size > 0) {
       const logoArrayBuffer = await logo.arrayBuffer();
       const logoBuffer = Buffer.from(new Uint8Array(logoArrayBuffer));
       logoUrl = await uploadToBlob(`logos/${id}`, logoBuffer, logo.type);
-
-      // Resize logo to ~20% of QR size
-      const logoResized = await sharp(logoBuffer)
-        .resize(102, 102, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
-        .png()
-        .toBuffer();
-
-      // Composite logo onto QR
-      qrPngBuffer = await sharp(qrPngBuffer)
-        .composite([{ input: logoResized, gravity: "center" }])
-        .png()
-        .toBuffer();
     }
 
     // Generate SVG
     const qrSvg = await generateQrSvg(url);
 
-    // Convert to JPEG
-    const qrJpegBuffer = await sharp(qrPngBuffer).jpeg({ quality: 90 }).toBuffer();
-
     // Upload to Blob
-    const [pngUrl, svgUrl, jpegUrl] = await Promise.all([
+    const [pngUrl, svgUrl] = await Promise.all([
       uploadToBlob(`qr/${id}.png`, qrPngBuffer, "image/png"),
       uploadToBlob(`qr/${id}.svg`, qrSvg, "image/svg+xml"),
-      uploadToBlob(`qr/${id}.jpeg`, qrJpegBuffer, "image/jpeg"),
     ]);
-
-    // Get dimensions
-    const metadata = await sharp(qrPngBuffer).metadata();
 
     // Save to DB
     const qrCode = await prisma.qrCode.create({
@@ -78,9 +58,9 @@ export async function POST(req: NextRequest) {
         logoUrl,
         renderedPngUrl: pngUrl,
         renderedSvgUrl: svgUrl,
-        renderedJpegUrl: jpegUrl,
-        widthPx: metadata.width || 512,
-        heightPx: metadata.height || 512,
+        renderedJpegUrl: pngUrl, // Use PNG as fallback for JPEG
+        widthPx: 512,
+        heightPx: 512,
         userId: session.user.id,
       },
     });
