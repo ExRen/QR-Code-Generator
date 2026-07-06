@@ -6,8 +6,8 @@ export async function uploadToBlob(
   contentType: string
 ): Promise<string> {
   const blob = await put(pathname, data, {
-    access: "public",
     contentType,
+    addRandomSuffix: true,
   });
   return blob.url;
 }

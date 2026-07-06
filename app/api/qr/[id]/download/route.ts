@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { head } from "@vercel/blob";
 
 export async function GET(
   req: NextRequest,
@@ -48,8 +49,14 @@ export async function GET(
     return NextResponse.json({ error: "Format not available" }, { status: 404 });
   }
 
-  // Fetch from Blob and stream back
+  // For private blobs, fetch using the URL directly
+  // The URL from put() is already signed and accessible
   const response = await fetch(url);
+  
+  if (!response.ok) {
+    return NextResponse.json({ error: "Failed to fetch file" }, { status: 500 });
+  }
+
   const buffer = await response.arrayBuffer();
 
   return new NextResponse(buffer, {

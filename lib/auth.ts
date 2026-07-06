@@ -6,6 +6,7 @@ import { prisma } from "./prisma";
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
